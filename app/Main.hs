@@ -1,35 +1,30 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell   #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
-import Prelude hiding (writeFile)
-import Graphics.Gloss.Interface.IO.Game
-import Graphics.Gloss.Data.Bitmap
-import Graphics.Gloss.Juicy
-import Data.Maybe (fromJust)
-import Debug.Trace
-import Codec.Picture.RGBA8
-import Control.Lens
-import Turtle
-import Control.Foldl (list)
-import Data.Maybe (isJust)
-import Data.Text (unpack)
-import Data.Maybe (catMaybes)
-import Data.List (minimumBy)
-import Data.List (delete)
-import Data.Ord (comparing)
-import Codec.Picture.Png
-import Data.ByteString.Lazy (writeFile)
-import Data.List (sort)
+import           Control.Lens
+import           Graphics.Gloss.Interface.IO.Game
+import           Turtle
 
-data Image = Image { _xDim      :: Int
-                   , _yDim      :: Int
-                   , _fileName  :: String
-                   , _imageBMP  :: Picture
-                   , _cutCoords :: [Int]
-                   , _zoomLevel  :: Float
+import           Codec.Picture.Png                (encodePng)
+import           Codec.Picture.RGBA8              (readImageRGBA8, trimImage)
+import           Control.Foldl                    (list)
+import           Data.ByteString.Lazy             (writeFile)
+import           Data.List                        (delete, minimumBy, sort)
+import           Data.Maybe                       (catMaybes, fromJust, isJust)
+import           Data.Ord                         (comparing)
+import           Data.Text                        (unpack)
+import           Graphics.Gloss.Juicy             (loadJuicy)
+import           Prelude                          hiding (writeFile)
+
+data Image = Image { _xDim         :: Int
+                   , _yDim         :: Int
+                   , _fileName     :: String
+                   , _imageBMP     :: Picture
+                   , _cutCoords    :: [Int]
+                   , _zoomLevel    :: Float
                    , _vTranslation :: Float
                    } deriving (Eq,Show)
 makeLenses ''Image
