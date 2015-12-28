@@ -1,23 +1,26 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TemplateHaskell   #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 module Main where
 
 import           Control.Lens
-import           Graphics.Gloss.Interface.IO.Game
+import           Graphics.Gloss.Interface.IO.Game hiding (text)
 import           Turtle
 
 import           Codec.Picture.Png                (encodePng)
 import           Codec.Picture.RGBA8              (readImageRGBA8, trimImage)
 import           Control.Foldl                    (list)
 import           Data.ByteString.Lazy             (writeFile)
-import           Data.List                        (delete, minimumBy, sort)
+import           Data.Char                        (isDigit)
+import           Data.List                        (delete, minimumBy, sort, sortBy)
 import           Data.Maybe                       (catMaybes, fromJust, isJust)
 import           Data.Ord                         (comparing)
 import           Data.Text                        (unpack)
 import           Graphics.Gloss.Juicy             (loadJuicy)
 import           Prelude                          hiding (writeFile)
+import           Text.Read                        (readMaybe)
 
 data Image = Image { _xDim         :: Int
                    , _yDim         :: Int
@@ -42,9 +45,8 @@ prevImage (AppState is) = AppState $ [last is] ++ init is
 main :: IO ()
 main = do
   dir  <- pwd
-  imgs <- fold (grep (ends "png") (format fp <$> ls dir)) list
-  app  <- fmap catMaybes . sequence $ map (fromFilePathToImage . unpack) imgs
-
+  imgs <- flip fold list . grep (ends "png") $ format fp <$> ls dir
+  app  <- fmap catMaybes . sequence . map fromFilePathToImage . sortBy (comparing page) . map unpack $ imgs
   playIO
     (InWindow "Image Splitter" (1600,900) (0,0))
     white
@@ -54,11 +56,14 @@ main = do
     processClick
     (\_ s -> return s)
 
+page :: String -> Maybe Int
+page = readMaybe . takeWhile (isDigit) . reverse . takeWhile (/= '/') . reverse
+
 processClick :: Event -> AppState -> IO AppState
 processClick (EventKey (MouseButton LeftButton)  Down noModifiers (_,y)) =
-  return . (images . _head %~ maybeAddCut (round y))
-processClick (EventKey (MouseButton RightButton) Down noModifiers (_,y)) =
-  return . (images . _head . cutCoords %~ deleteNear (round y))
+  return . (images . _head %~ maybeAddCut y)
+processClick (EventKey (MouseButton RightButton) Down noModifiers (_,y)) = \s ->
+  return . (images . _head . cutCoords %~ deleteNear (y ^. from (renderCoordY (s^?!images._head)))) $ s
 processClick (EventKey (SpecialKey  KeyRight)    Down noModifiers _) =
   return . nextImage
 processClick (EventKey (SpecialKey  KeyLeft)    Down noModifiers _) =
@@ -66,7 +71,7 @@ processClick (EventKey (SpecialKey  KeyLeft)    Down noModifiers _) =
 processClick (EventKey (SpecialKey  KeyEnter)    Down noModifiers _) = \s -> do
   let (Image x y fn _ cs _ _) = s ^?! images . _head
   original <- readImageRGBA8 fn
-  let newCuts = sort $ map (toImageCoord y) cs
+  let newCuts = sort cs
   let cutImages = map (\(a, b) -> trimImage original (x,b-a) (0,a)) $ zip (0:newCuts) (newCuts++[y])
   mapM_ (\(im, iden) -> writeFile (fn ++ "_cut" ++ show iden ++ ".png") (encodePng im)) $ zip cutImages [1..]
   return s
@@ -79,27 +84,19 @@ processClick (EventKey (SpecialKey KeyDown) Down noModifiers _) = return . (imag
 
 processClick _ = return
 
-maybeAddCut :: Int -> Image -> Image
-maybeAddCut i img =
-  let btwn a b x = a <= x && x <= b
-      semiHeight = (fromIntegral $ (img ^. yDim) `div` 2) :: Float
-      zL = img ^. zoomLevel
-      vT = img ^. vTranslation
-      upperLimit = semiHeight    * zL + vT
-      lowerLimit = (-semiHeight) * zL + vT
-      inImage = btwn lowerLimit upperLimit
-      i' = round $ (fromIntegral i - vT) / zL
-  in if inImage (fromIntegral i) then over cutCoords (i':) img else img
-  -- in undefined
+maybeAddCut :: Float -> Image -> Image
+maybeAddCut f im = over cutCoords ((if inImage f' then [f'] else []) ++) im
+  where inImage x = 0 <= x && x <= (im^.yDim)
+        f' = f ^. from (renderCoordY im)
 
 deleteNear :: Int -> [Int] -> [Int]
-deleteNear y xs = delete (minimumBy (comparing (\x -> abs (x-y))) xs) xs
+deleteNear y xs = delete (minimumBy (comparing (abs . subtract y)) xs) xs
 
 drawState :: AppState -> IO Picture
 drawState (AppState imgs) = do
-  let (Image _ _ fn dt cs zm vt) = head imgs
+  let im@(Image _ h fn dt cs zm vt) = head imgs
       pic = translate 0 vt . scale zm zm $ dt
-  let cs' = map (\y -> let y' = (+ vt) . (* zm) $ fromIntegral y
+  let cs' = map (\y -> let y' = y ^. renderCoordY im
                        in Line [(-1000, y'), (1000, y')]) cs
   return $ Pictures $ [pic] ++ cs'
 
@@ -109,5 +106,17 @@ fromFilePathToImage fp = (fmap.fmap) (\im -> let (Bitmap x y _ _) = im in Image 
 noModifiers :: Modifiers
 noModifiers = Modifiers Up Up Up
 
-toImageCoord :: Int -> Int -> Int
-toImageCoord imageHeight = negate . subtract (imageHeight `div` 2)
+-- | Given an image, an isomorphism between the natural coordinates for the file
+-- (with 0,0 at the top left), and the zoomed and translated coordinates for the
+-- image, as used for rendering.
+renderCoordX :: Image -> Iso' Int Float
+renderCoordX (Image w _ _ _ _ zL _) = iso ((*zL) . subtract semiWeight . fromIntegral)
+                                          ((/zL) ! (+ semiWeight)      ! round       )
+  where semiWeight = fromIntegral w / 2
+        (!) = flip (.)
+
+renderCoordY :: Image -> Iso' Int Float
+renderCoordY (Image _ h _ _ _ zL vT) = iso ((+ vT)        . (*zL) . (+ semiHeight)        . negate . fromIntegral)
+                                           ((subtract vT) ! (/zL) ! (subtract semiHeight) ! negate ! round       )
+  where semiHeight = fromIntegral h / 2
+        (!) = flip (.)
