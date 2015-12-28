@@ -23,7 +23,6 @@ executable imageSplit-exe
                      , foldl
                      , gloss
                      , gloss-juicy
-                     , imageSplit
                      , imagemagick
                      , lens
                      , text

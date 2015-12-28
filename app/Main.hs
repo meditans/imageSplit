@@ -5,7 +5,6 @@
 module Main where
 
 import Prelude hiding (writeFile)
-import Lib
 import Graphics.Gloss.Interface.IO.Game
 import Graphics.Gloss.Data.Bitmap
 import Graphics.Gloss.Juicy
