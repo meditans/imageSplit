@@ -1,0 +1,59 @@
+name:                imageSplit
+version:             0.1.0.0
+synopsis:            Initial project template from stack
+description:         Please see README.md
+homepage:            http://github.com/meditans/imageSplit#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Carlo Nucera
+maintainer:          meditans@gmail.com
+copyright:           2015 Carlo Nucera
+category:            tutorial
+build-type:          Simple
+-- extra-source-files:
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Lib
+  build-depends:       JuicyPixels
+                     , base
+                     , bytestring
+                     , gloss
+                     , imagemagick
+                     , text
+  default-language:    Haskell2010
+
+executable imageSplit-exe
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       JuicyPixels
+                     , JuicyPixels-util
+                     , base
+                     , bytestring
+                     , foldl
+                     , gloss
+                     , gloss-juicy
+                     , imageSplit
+                     , imagemagick
+                     , lens
+                     , text
+                     , turtle
+  default-language:    Haskell2010
+
+test-suite imageSplit-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Spec.hs
+  build-depends:       JuicyPixels
+                     , base
+                     , bytestring
+                     , imageSplit
+                     , text
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/meditans/imageSplit
