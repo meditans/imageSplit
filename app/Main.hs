@@ -146,7 +146,7 @@ drawState st = do
              $ (st ^. currentPicture)
   let cuts = map (\(a,b) -> let a' = a ^. renderCoordY st
                                 b' = b ^. renderCoordY st
-                            in color black $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')])
+                            in color (light yellow) $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')])
                  (st ^. images . ix 0 . cutCoords)
   return $ Pictures $ [pic] ++ cuts
 
