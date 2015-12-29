@@ -15,7 +15,7 @@ cabal-version:       >=1.10
 executable imageSplit-exe
   hs-source-dirs:      app
   main-is:             Main.hs
-  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:       JuicyPixels
                      , JuicyPixels-util
                      , base
