@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE PatternSynonyms   #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 module Main where
@@ -53,36 +54,34 @@ main = do
     30
     (AppState app)
     drawState
-    processClick
+    action
     (\_ s -> return s)
 
 page :: String -> Maybe Int
 page = readMaybe . takeWhile (isDigit) . reverse . takeWhile (/= '/') . reverse
 
-processClick :: Event -> AppState -> IO AppState
-processClick (EventKey (MouseButton LeftButton)  Down noModifiers (_,y)) =
-  return . (images . _head %~ maybeAddCut y)
-processClick (EventKey (MouseButton RightButton) Down noModifiers (_,y)) = \s ->
+pattern Button b   <- EventKey b               Down _ _
+pattern Click  b y <- EventKey (MouseButton b) Down (Modifiers Up Up Up) (_,y)
+
+action :: Event -> AppState -> IO AppState
+action (Click LeftButton  y) = return . (images . _head %~ maybeAddCut y)
+action (Click RightButton y) = \s ->
   return . (images . _head . cutCoords %~ deleteNear (y ^. from (renderCoordY (s^?!images._head)))) $ s
-processClick (EventKey (SpecialKey  KeyRight)    Down noModifiers _) =
-  return . nextImage
-processClick (EventKey (SpecialKey  KeyLeft)    Down noModifiers _) =
-  return . prevImage
-processClick (EventKey (SpecialKey  KeyEnter)    Down noModifiers _) = \s -> do
+action (Button (SpecialKey  KeyRight)) = return . nextImage
+action (Button (SpecialKey  KeyLeft))  = return . prevImage
+action (Button (SpecialKey  KeyEnter)) = \s -> do
   let (Image x y fn _ cs _ _) = s ^?! images . _head
   original <- readImageRGBA8 fn
   let newCuts = sort cs
   let cutImages = map (\(a, b) -> trimImage original (x,b-a) (0,a)) $ zip (0:newCuts) (newCuts++[y])
   mapM_ (\(im, iden) -> writeFile (fn ++ "_cut" ++ show iden ++ ".png") (encodePng im)) $ zip cutImages [1..]
   return s
-
-processClick (EventKey (Char '+') Down noModifiers _) = return . (images . _head . zoomLevel *~  1.1)
-processClick (EventKey (Char '-') Down noModifiers _) = return . (images . _head . zoomLevel //~ 1.1)
-processClick (EventKey (Char '=') Down noModifiers _) = return . (images . _head . zoomLevel .~ 1)
-processClick (EventKey (SpecialKey KeyUp)   Down noModifiers _) = return . (images . _head . vTranslation -~ 100)
-processClick (EventKey (SpecialKey KeyDown) Down noModifiers _) = return . (images . _head . vTranslation +~ 100)
-
-processClick _ = return
+action (Button (Char '+')) = return . (images . _head . zoomLevel *~  1.1)
+action (Button (Char '-')) = return . (images . _head . zoomLevel //~ 1.1)
+action (Button (Char '=')) = return . (images . _head . zoomLevel .~ 1)
+action (Button (SpecialKey KeyUp)) = return . (images . _head . vTranslation -~ 100)
+action (Button (SpecialKey KeyDown)) = return . (images . _head . vTranslation +~ 100)
+action _ = return
 
 maybeAddCut :: Float -> Image -> Image
 maybeAddCut f im = over cutCoords ((if inImage f' then [f'] else []) ++) im
@@ -90,7 +89,7 @@ maybeAddCut f im = over cutCoords ((if inImage f' then [f'] else []) ++) im
         f' = f ^. from (renderCoordY im)
 
 deleteNear :: Int -> [Int] -> [Int]
-deleteNear y xs = delete (minimumBy (comparing (abs . subtract y)) xs) xs
+deleteNear y xs = flip delete xs . minimumBy (comparing (abs . subtract y)) $ xs
 
 drawState :: AppState -> IO Picture
 drawState (AppState imgs) = do
@@ -102,9 +101,6 @@ drawState (AppState imgs) = do
 
 fromFilePathToImage :: String -> IO (Maybe Image)
 fromFilePathToImage fp = (fmap.fmap) (\im -> let (Bitmap x y _ _) = im in Image x y fp im [] 1 0) (loadJuicy fp)
-
-noModifiers :: Modifiers
-noModifiers = Modifiers Up Up Up
 
 -- | Given an image, an isomorphism between the natural coordinates for the file
 -- (with 0,0 at the top left), and the zoomed and translated coordinates for the
