@@ -15,7 +15,7 @@ import           Control.Foldl                    (list)
 import           Data.ByteString.Lazy             (writeFile)
 import           Data.Char                        (isDigit)
 import           Data.List                        (delete, minimumBy, sort, sortBy)
-import           Data.Maybe                       (catMaybes, fromJust)
+import           Data.Maybe                       (fromJust)
 import           Data.Ord                         (comparing)
 import           Data.Text                        (unpack)
 import           Graphics.Gloss.Juicy             (loadJuicy)
@@ -23,49 +23,41 @@ import           Prelude                          hiding (writeFile)
 import           Text.Read                        (readMaybe)
 import           Turtle                           (pwd, ls, grep, fold, ends, format, fp)
 
-data ImageData = ImageData { _xDim         :: Int
-                           , _yDim         :: Int
-                           , _fileName     :: String
-                           , _cutCoords    :: [Int]
-                           , _zoomLevel    :: Float
-                           , _vTranslation :: Float
-                           } deriving (Eq,Show)
-makeLenses ''ImageData
+--------------------------------------------------------------------------------
+-- Data declarations
+--------------------------------------------------------------------------------
 
-data Image = Image { _width  :: Int
-                   , _height :: Int
-                   , _pic    :: Picture }
-makeLenses ''Image
+data PictureData = PictureData { _fileName     :: String
+                               , _cutCoords    :: [Int]
+                               } deriving (Eq,Show)
+makeLenses ''PictureData
 
-data AppState = AppState { _images         :: [ImageData]
+data AppState = AppState { _images         :: [PictureData]
                          , _currentPicture :: Picture
+                         , _zoomLevel      :: Float
+                         , _vTranslation   :: Float
                          } deriving (Eq,Show)
 makeLenses ''AppState
 
-nextImage :: AppState -> IO AppState
-nextImage (AppState is _) = do
-  img <- fmap fromJust $ loadJuicy (head (tail is) ^. fileName)
-  return $ AppState (tail is ++ [head is]) img
-
-prevImage :: AppState -> IO AppState
-prevImage (AppState is _) = do
-  img <- fmap fromJust $ loadJuicy (last is ^. fileName)
-  return $ AppState ([last is] ++ init is) img
+--------------------------------------------------------------------------------
+-- Main and action dispatch
+--------------------------------------------------------------------------------
 
 main :: IO ()
 main = do
   dir  <- pwd
-  imgs <- flip fold list . grep (ends "png") $ format fp <$> ls dir
-  app  <- fmap catMaybes . sequence . map fromFilePathToImage . sortBy (comparing page) . map unpack $ imgs
-  startingImage <- fmap fromJust $ loadJuicy (head app ^. fileName)
+  imgPaths <- sortBy (comparing page) . map unpack
+          <$> (flip fold list . grep (ends "png") $ format fp <$> ls dir)
+  startingImage <- fmap fromJust $ loadJuicy (head imgPaths)
   playIO
-    (InWindow "ImageData Splitter" (1600,900) (0,0))
-    white
+    (InWindow "PictureData Splitter" (1600,900) (0,0))
+    (bright orange)
     30
-    (AppState app startingImage)
+    (AppState (zipWith PictureData imgPaths (repeat [])) startingImage 1 0)
     drawState
     action
     (\_ s -> return s)
+  undefined
 
 page :: String -> Maybe Int
 page = readMaybe . takeWhile (isDigit) . reverse . takeWhile (/= '/') . reverse
@@ -74,57 +66,101 @@ pattern Button b   <- EventKey b               Down _ _
 pattern Click  b y <- EventKey (MouseButton b) Down (Modifiers Up Up Up) (_,y)
 
 action :: Event -> AppState -> IO AppState
-action (Click LeftButton  y) = return . (images . _head %~ maybeAddCut y)
-action (Click RightButton y) = \s ->
-  return . (images . _head . cutCoords %~ deleteNear (y ^. from (renderCoordY (s^?!images._head)))) $ s
+action (Click LeftButton  y) = return . maybeAddCut y
+action (Click RightButton y) = return . deleteNear y
 action (Button (SpecialKey  KeyRight)) = nextImage
 action (Button (SpecialKey  KeyLeft))  = prevImage
-action (Button (SpecialKey  KeyEnter)) = \s -> do
-  let (ImageData x y fn cs _ _) = s ^?! images . _head
-  original <- readImageRGBA8 fn
-  let newCuts = sort cs
-  let cutImages = map (\(a, b) -> trimImage original (x,b-a) (0,a)) $ zip (0:newCuts) (newCuts++[y])
-  mapM_ (\(im, iden) -> writeFile (fn ++ "_cut" ++ show iden ++ ".png") (encodePng im)) $ zip cutImages [(1::Int)..]
-  return s
-action (Button (Char '+')) = return . (images . _head . zoomLevel *~  1.1)
-action (Button (Char '-')) = return . (images . _head . zoomLevel //~ 1.1)
-action (Button (Char '=')) = return . (images . _head . zoomLevel .~ 1)
-action (Button (SpecialKey KeyUp))   = return . (images . _head . vTranslation -~ 100)
-action (Button (SpecialKey KeyDown)) = return . (images . _head . vTranslation +~ 100)
+action (Button (SpecialKey  KeyEnter)) = saveCuts
+action (Button (Char '+'))             = return . (zoomLevel *~  1.1)
+action (Button (Char '-'))             = return . (zoomLevel //~ 1.1)
+action (Button (Char '='))             = return . (zoomLevel .~ 1)
+action (Button (SpecialKey KeyUp))     = return . (vTranslation -~ 100)
+action (Button (SpecialKey KeyDown))   = return . (vTranslation +~ 100)
 action _ = return
 
-maybeAddCut :: Float -> ImageData -> ImageData
-maybeAddCut f im = over cutCoords ((if inImage f' then [f'] else []) ++) im
-  where inImage x = 0 <= x && x <= (im^.yDim)
-        f' = f ^. from (renderCoordY im)
+--------------------------------------------------------------------------------
+-- Functions on state
+--------------------------------------------------------------------------------
 
-deleteNear :: Int -> [Int] -> [Int]
-deleteNear y xs = flip delete xs . minimumBy (comparing (abs . subtract y)) $ xs
+nextImage :: AppState -> IO AppState
+nextImage st = if length imgs < 2 then return st
+  else do
+    pic <- fromJust <$> loadJuicy (next ^?! _Just . fileName)
+    return $ currentPicture .~ pic
+           $ images         .~ (tail imgs ++ current ^.. _Just)
+           $ st
+  where imgs = st ^. images
+        current = imgs ^? ix 0
+        next    = imgs ^? ix 1
+
+prevImage :: AppState -> IO AppState
+prevImage st = if length imgs < 2 then return st
+  else do
+    pic <- fromJust <$> loadJuicy (prev ^?! _Just . fileName)
+    return $ currentPicture .~ pic
+           $ images         .~ (prev ^.. _Just ++ init imgs)
+           $ st
+  where imgs = st ^. images
+        prev    = imgs ^? reversed . ix 0
+
+saveCuts :: AppState -> IO AppState
+saveCuts st = do
+  let picData = st ^?! images . _head
+      cuts = sort (picData ^. cutCoords)
+      w = st ^. currentPicture . to width
+      h = st ^. currentPicture . to height
+  original <- readImageRGBA8 (picData ^. fileName)
+  let trim (a,b) = trimImage original (w,b-a) (0,a)
+      cutImages  = map trim $ zip (0:cuts) (cuts++[h])
+  sequence_ [ writeFile ((picData ^. fileName) ++ "_cut" ++ show iD ++ ".png") (encodePng cut)
+            | (cut, iD) <- zip cutImages [(1::Int)..]]
+  return st
+
+maybeAddCut :: Float -> AppState -> AppState
+maybeAddCut f st = over (images . ix 0 . cutCoords) ((if inImage f' then [f'] else []) ++) st
+  where inImage x = 0 <= x && x <= (st ^. currentPicture . to height)
+        f' = f ^. from (renderCoordY st)
+
+deleteNear :: Float -> AppState -> AppState
+deleteNear f st = over (images . ix 0 . cutCoords) (pureDeletion f') st
+  where pureDeletion x xs = flip delete xs . minimumBy (comparing (abs . subtract x)) $ xs
+        f' = f ^. from (renderCoordY st)
 
 drawState :: AppState -> IO Picture
-drawState (AppState imgs pict) = do
-  let im@(ImageData _ _ _ cs zm vt) = head imgs
-      pict' = translate 0 vt . scale zm zm $ pict
-  let cs' = map (\y -> let y' = y ^. renderCoordY im
-                       in Line [(-1000, y'), (1000, y')]) cs
-  return $ Pictures $ [pict'] ++ cs'
+drawState st = do
+  let pic  = translate 0 (st ^. vTranslation)
+             . scale (st ^. zoomLevel) (st ^. zoomLevel)
+             $ (st ^. currentPicture)
+  let cuts = map (\y -> let y' = y ^. renderCoordY st
+                        in Line [(-1000, y'), (1000, y')])
+                 (st ^. images . ix 0 . cutCoords)
+  return $ Pictures $ [pic] ++ cuts
 
-fromFilePathToImage :: String -> IO (Maybe ImageData)
-fromFilePathToImage fpath = (fmap.fmap) bitmapToImage (loadJuicy fpath)
-  where bitmapToImage (Bitmap x y _ _) = ImageData x y fpath [] 1 0
-        bitmapToImage _ = error "This bitmap wasn't well constructed"
+--------------------------------------------------------------------------------
+-- Coordinate isomorphisms
+--------------------------------------------------------------------------------
 
 -- | Given an image, an isomorphism between the natural coordinates for the file
 -- (with 0,0 at the top left), and the zoomed and translated coordinates for the
 -- image, as used for rendering.
-renderCoordX :: ImageData -> Iso' Int Float
-renderCoordX (ImageData w _ _ _ zL _) = iso ((*zL) . subtract semiWeight . fromIntegral)
-                                            ((/zL) ! (+ semiWeight)      ! round       )
-  where semiWeight = fromIntegral w / 2
+renderCoordX :: AppState -> Iso' Int Float
+renderCoordX st = iso ((*zL) . subtract semiWidth . fromIntegral)
+                      ((/zL) ! (+ semiWidth)      ! round       )
+  where semiWidth = fromIntegral (st ^. currentPicture . to width) / 2
         (!) = flip (.)
+        zL = st ^. zoomLevel
 
-renderCoordY :: ImageData -> Iso' Int Float
-renderCoordY (ImageData _ h _ _ zL vT) = iso ((+ vT)        . (*zL) . (+ semiHeight)        . negate . fromIntegral)
-                                             ((subtract vT) ! (/zL) ! (subtract semiHeight) ! negate ! round       )
-  where semiHeight = fromIntegral h / 2
+renderCoordY :: AppState -> Iso' Int Float
+renderCoordY st = iso ((+ vT)        . (*zL) . (+ semiHeight)        . negate . fromIntegral)
+                      ((subtract vT) ! (/zL) ! (subtract semiHeight) ! negate ! round       )
+  where semiHeight = fromIntegral (st ^. currentPicture . to height) / 2
         (!) = flip (.)
+        vT = st ^. vTranslation
+        zL = st ^. zoomLevel
+
+width, height :: Picture -> Int
+width  (Bitmap x _ _ _) = x
+width  _ = error "Not a bitmap"
+height (Bitmap _ y _ _) = y
+height _ = error "Not a bitmap"
+
