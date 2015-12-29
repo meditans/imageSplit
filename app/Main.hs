@@ -22,13 +22,14 @@ import           Graphics.Gloss.Juicy             (loadJuicy)
 import           Prelude                          hiding (writeFile)
 import           Text.Read                        (readMaybe)
 import           Turtle                           (pwd, ls, grep, fold, ends, format, fp)
+import Data.Maybe (isNothing)
 
 --------------------------------------------------------------------------------
 -- Data declarations
 --------------------------------------------------------------------------------
 
 data PictureData = PictureData { _fileName     :: String
-                               , _cutCoords    :: [Int]
+                               , _cutCoords    :: [(Int,Int)]
                                } deriving (Eq,Show)
 makeLenses ''PictureData
 
@@ -36,6 +37,7 @@ data AppState = AppState { _images         :: [PictureData]
                          , _currentPicture :: Picture
                          , _zoomLevel      :: Float
                          , _vTranslation   :: Float
+                         , _semiCut        :: Maybe Int
                          } deriving (Eq,Show)
 makeLenses ''AppState
 
@@ -53,7 +55,7 @@ main = do
     (InWindow "PictureData Splitter" (1600,900) (0,0))
     (bright orange)
     30
-    (AppState (zipWith PictureData imgPaths (repeat [])) startingImage 1 0)
+    (AppState (zipWith PictureData imgPaths (repeat [])) startingImage 1 0 Nothing)
     drawState
     action
     (\_ s -> return s)
@@ -108,31 +110,43 @@ saveCuts st = do
   let picData = st ^?! images . _head
       cuts = sort (picData ^. cutCoords)
       w = st ^. currentPicture . to width
-      h = st ^. currentPicture . to height
   original <- readImageRGBA8 (picData ^. fileName)
   let trim (a,b) = trimImage original (w,b-a) (0,a)
-      cutImages  = map trim $ zip (0:cuts) (cuts++[h])
+      cutImages  = map trim cuts
   sequence_ [ writeFile ((picData ^. fileName) ++ "_cut" ++ show iD ++ ".png") (encodePng cut)
             | (cut, iD) <- zip cutImages [(1::Int)..]]
   return st
 
-maybeAddCut :: Float -> AppState -> AppState
-maybeAddCut f st = over (images . ix 0 . cutCoords) ((if inImage f' then [f'] else []) ++) st
-  where inImage x = 0 <= x && x <= (st ^. currentPicture . to height)
-        f' = f ^. from (renderCoordY st)
+-- maybeAddCut :: Float -> AppState -> AppState
+-- maybeAddCut f st = over (images . ix 0 . cutCoords) ((if inImage f' then [f'] else []) ++) st
+--   where inImage x = 0 <= x && x <= (st ^. currentPicture . to height)
+--         f' = f ^. from (renderCoordY st)
 
+maybeAddCut :: Float -> AppState -> AppState
+maybeAddCut y st = maybe
+  (set semiCut (Just y') st)
+  (\x -> set semiCut Nothing
+         . over (images . _head . cutCoords) ((min x y', max x y'):)
+         $ st)
+  (st ^. semiCut)
+  where y' = y ^. from (renderCoordY st)
+
+-- deleteNear :: Float -> AppState -> AppState
+-- deleteNear f st = over (images . ix 0 . cutCoords) (pureDeletion f') st
+--   where pureDeletion x xs = flip delete xs . minimumBy (comparing (abs . subtract x)) $ xs
+--         f' = f ^. from (renderCoordY st)
 deleteNear :: Float -> AppState -> AppState
-deleteNear f st = over (images . ix 0 . cutCoords) (pureDeletion f') st
-  where pureDeletion x xs = flip delete xs . minimumBy (comparing (abs . subtract x)) $ xs
-        f' = f ^. from (renderCoordY st)
+deleteNear = undefined
+
 
 drawState :: AppState -> IO Picture
 drawState st = do
   let pic  = translate 0 (st ^. vTranslation)
              . scale (st ^. zoomLevel) (st ^. zoomLevel)
              $ (st ^. currentPicture)
-  let cuts = map (\y -> let y' = y ^. renderCoordY st
-                        in Line [(-1000, y'), (1000, y')])
+  let cuts = map (\(a,b) -> let a' = a ^. renderCoordY st
+                                b' = b ^. renderCoordY st
+                            in color black $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')])
                  (st ^. images . ix 0 . cutCoords)
   return $ Pictures $ [pic] ++ cuts
 
