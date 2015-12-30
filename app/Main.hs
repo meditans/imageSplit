@@ -16,13 +16,16 @@ import           Data.ByteString.Lazy             (writeFile)
 import           Data.Char                        (isDigit)
 import           Data.List                        (delete, minimumBy, sort, sortBy)
 import           Data.Maybe                       (fromJust)
+import           Data.Monoid                      ((<>))
 import           Data.Ord                         (comparing)
+import qualified Data.Ord as O                    (Down(..))
 import           Data.Text                        (unpack)
 import           Graphics.Gloss.Juicy             (loadJuicy)
 import           Prelude                          hiding (writeFile)
 import           Text.Read                        (readMaybe)
 import           Turtle                           (pwd, ls, grep, fold, ends, format, fp)
-import Data.Maybe (isNothing)
+
+
 
 --------------------------------------------------------------------------------
 -- Data declarations
@@ -53,7 +56,7 @@ main = do
   startingImage <- fmap fromJust $ loadJuicy (head imgPaths)
   playIO
     (InWindow "PictureData Splitter" (1600,900) (0,0))
-    (bright orange)
+    (makeColorI 253 246 227 80)
     30
     (AppState (zipWith PictureData imgPaths (repeat [])) startingImage 1 0 Nothing)
     drawState
@@ -70,14 +73,15 @@ pattern Click  b y <- EventKey (MouseButton b) Down (Modifiers Up Up Up) (_,y)
 action :: Event -> AppState -> IO AppState
 action (Click LeftButton  y) = return . maybeAddCut y
 action (Click RightButton y) = return . deleteNear y
-action (Button (SpecialKey  KeyRight)) = nextImage
-action (Button (SpecialKey  KeyLeft))  = prevImage
-action (Button (SpecialKey  KeyEnter)) = saveCuts
-action (Button (Char '+'))             = return . (zoomLevel *~  1.1)
-action (Button (Char '-'))             = return . (zoomLevel //~ 1.1)
-action (Button (Char '='))             = return . (zoomLevel .~ 1)
-action (Button (SpecialKey KeyUp))     = return . (vTranslation -~ 100)
-action (Button (SpecialKey KeyDown))   = return . (vTranslation +~ 100)
+action (Button (SpecialKey  KeyRight))  = nextImage
+action (Button (SpecialKey  KeyLeft))   = prevImage
+action (Button (SpecialKey  KeyEnter))  = saveCuts
+action (Button (SpecialKey  KeyDelete)) = deleteCuts
+action (Button (Char '+'))              = return . (zoomLevel *~  1.1)
+action (Button (Char '-'))              = return . (zoomLevel //~ 1.1)
+action (Button (Char '='))              = return . (zoomLevel .~ 1)
+action (Button (SpecialKey KeyUp))      = return . (vTranslation -~ 100)
+action (Button (SpecialKey KeyDown))    = return . (vTranslation +~ 100)
 action _ = return
 
 --------------------------------------------------------------------------------
@@ -88,7 +92,8 @@ nextImage :: AppState -> IO AppState
 nextImage st = if length imgs < 2 then return st
   else do
     pic <- fromJust <$> loadJuicy (next ^?! _Just . fileName)
-    return $ currentPicture .~ pic
+    return $ semiCut        .~ Nothing
+           $ currentPicture .~ pic
            $ images         .~ (tail imgs ++ current ^.. _Just)
            $ st
   where imgs = st ^. images
@@ -99,11 +104,12 @@ prevImage :: AppState -> IO AppState
 prevImage st = if length imgs < 2 then return st
   else do
     pic <- fromJust <$> loadJuicy (prev ^?! _Just . fileName)
-    return $ currentPicture .~ pic
+    return $ semiCut        .~ Nothing
+           $ currentPicture .~ pic
            $ images         .~ (prev ^.. _Just ++ init imgs)
            $ st
   where imgs = st ^. images
-        prev    = imgs ^? reversed . ix 0
+        prev = imgs ^? reversed . ix 0
 
 saveCuts :: AppState -> IO AppState
 saveCuts st = do
@@ -117,10 +123,8 @@ saveCuts st = do
             | (cut, iD) <- zip cutImages [(1::Int)..]]
   return st
 
--- maybeAddCut :: Float -> AppState -> AppState
--- maybeAddCut f st = over (images . ix 0 . cutCoords) ((if inImage f' then [f'] else []) ++) st
---   where inImage x = 0 <= x && x <= (st ^. currentPicture . to height)
---         f' = f ^. from (renderCoordY st)
+deleteCuts :: AppState -> IO AppState
+deleteCuts = return . (set semiCut Nothing) . (set (images . _head . cutCoords) [])
 
 maybeAddCut :: Float -> AppState -> AppState
 maybeAddCut y st = maybe
@@ -131,13 +135,14 @@ maybeAddCut y st = maybe
   (st ^. semiCut)
   where y' = y ^. from (renderCoordY st)
 
--- deleteNear :: Float -> AppState -> AppState
--- deleteNear f st = over (images . ix 0 . cutCoords) (pureDeletion f') st
---   where pureDeletion x xs = flip delete xs . minimumBy (comparing (abs . subtract x)) $ xs
---         f' = f ^. from (renderCoordY st)
 deleteNear :: Float -> AppState -> AppState
-deleteNear = undefined
-
+deleteNear f st = over (images . ix 0 . cutCoords) (pureDeletion f') st
+  where pureDeletion x xs = flip delete xs
+          . minimumBy (\h k -> comparing (\(a,b) -> O.Down (btwn a b x)) h k
+                            <> comparing (\(a,b) -> abs (a-x) + abs (b-x)) h k
+                      ) $ xs
+        f' = f ^. from (renderCoordY st)
+        btwn a b x = a <= x && x <= b
 
 drawState :: AppState -> IO Picture
 drawState st = do
@@ -146,9 +151,13 @@ drawState st = do
              $ (st ^. currentPicture)
   let cuts = map (\(a,b) -> let a' = a ^. renderCoordY st
                                 b' = b ^. renderCoordY st
-                            in color (light yellow) $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')])
+                            in color (makeColorI 238 232 213 110)
+                               $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')])
                  (st ^. images . ix 0 . cutCoords)
-  return $ Pictures $ [pic] ++ cuts
+  let sCut = maybe Blank (\y -> let y' = y ^. renderCoordY st
+                                in line [(-1000, y'), (1000,y')])
+                         (st ^. semiCut)
+  return $ Pictures $ [pic] ++ cuts ++ [sCut]
 
 --------------------------------------------------------------------------------
 -- Coordinate isomorphisms
