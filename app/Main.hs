@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell   #-}
 {-# LANGUAGE PatternSynonyms   #-}
 {-# LANGUAGE RankNTypes        #-}
+{-# LANGUAGE TemplateHaskell   #-}
 {-# OPTIONS_GHC -fdefer-typed-holes #-}
 
 module Main where
@@ -9,30 +9,31 @@ module Main where
 import           Control.Lens
 import           Graphics.Gloss.Interface.IO.Game hiding (text)
 
-import           Codec.Picture.Png                (encodePng)
-import           Codec.Picture.RGBA8              (readImageRGBA8, trimImage)
+import           Codec.Picture.Png                (encodePng, writePng)
+import           Codec.Picture.RGBA8              (readImageRGBA8, trimImage, patchImage)
+import           Codec.Picture.Types              (Image (..), PixelRGBA8 (..), generateImage)
 import           Control.Foldl                    (list)
 import           Data.ByteString.Lazy             (writeFile)
 import           Data.Char                        (isDigit)
-import           Data.List                        (delete, minimumBy, sort, sortBy)
+import           Data.List                        (delete, minimumBy, sort,
+                                                   sortBy)
 import           Data.Maybe                       (fromJust)
 import           Data.Monoid                      ((<>))
 import           Data.Ord                         (comparing)
-import qualified Data.Ord as O                    (Down(..))
+import qualified Data.Ord                         as O (Down (..))
 import           Data.Text                        (unpack)
 import           Graphics.Gloss.Juicy             (loadJuicy)
 import           Prelude                          hiding (writeFile)
 import           Text.Read                        (readMaybe)
-import           Turtle                           (pwd, ls, grep, fold, ends, format, fp)
-
-
+import           Turtle                           (ends, fold, format, fp, grep,
+                                                   ls, pwd)
 
 --------------------------------------------------------------------------------
 -- Data declarations
 --------------------------------------------------------------------------------
 
-data PictureData = PictureData { _fileName     :: String
-                               , _cutCoords    :: [(Int,Int)]
+data PictureData = PictureData { _fileName  :: String
+                               , _cutCoords :: [(Int,Int)]
                                } deriving (Eq,Show)
 makeLenses ''PictureData
 
@@ -201,7 +202,8 @@ mergePages im1@(Image w1 h1 _) im2@(Image w2 h2 _) =
     (nx1, ny1) = if w1 >= w2 then (0,0) else ((w1-w2) `div` 2, 0)
     (nx2, ny2) = if w1 >= w2 then ((w1-w2) `div` 2, h1) else (0,h1)
 
-test = do
+testMergePages :: IO ()
+testMergePages = do
  p1 <- readImageRGBA8 "page1.png"
  p2 <- readImageRGBA8 "page2.png"
  let p3 = mergePages p1 p2
