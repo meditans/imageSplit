@@ -185,3 +185,24 @@ width  (Bitmap x _ _ _) = x
 width  _ = error "Not a bitmap"
 height (Bitmap _ y _ _) = y
 height _ = error "Not a bitmap"
+
+--------------------------------------------------------------------------------
+-- Page merging
+--------------------------------------------------------------------------------
+
+mergePages :: Image PixelRGBA8 -> Image PixelRGBA8 -> Image PixelRGBA8
+mergePages im1@(Image w1 h1 _) im2@(Image w2 h2 _) =
+    patch (nx1, ny1) im1
+  $ patch (nx2, ny2) im2
+  $ generateImage (const . const $ whitePixel) (max w1 w2) (h1 + h2)
+  where
+    whitePixel = PixelRGBA8 255 255 255 255
+    patch pos target source = patchImage source pos target
+    (nx1, ny1) = if w1 >= w2 then (0,0) else ((w1-w2) `div` 2, 0)
+    (nx2, ny2) = if w1 >= w2 then ((w1-w2) `div` 2, h1) else (0,h1)
+
+test = do
+ p1 <- readImageRGBA8 "page1.png"
+ p2 <- readImageRGBA8 "page2.png"
+ let p3 = mergePages p1 p2
+ writePng "page3.png" p3
