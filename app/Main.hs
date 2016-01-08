@@ -50,7 +50,7 @@ makeLenses ''AppState
 
 main :: IO ()
 main = do
-  dir  <- pwd
+  dir <- pwd
   imgPaths <- sortBy (comparing page) . map unpack
           <$> (flip fold list . grep (ends "png") $ format fp <$> ls dir)
   startingImage <- fmap fromJust $ loadJuicy (head imgPaths)
@@ -62,7 +62,6 @@ main = do
     drawState
     action
     (\_ s -> return s)
-  undefined
 
 page :: String -> Maybe Int
 page = readMaybe . takeWhile (isDigit) . reverse . takeWhile (/= '/') . reverse
@@ -186,4 +185,3 @@ width  (Bitmap x _ _ _) = x
 width  _ = error "Not a bitmap"
 height (Bitmap _ y _ _) = y
 height _ = error "Not a bitmap"
-
