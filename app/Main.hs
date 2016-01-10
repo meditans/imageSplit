@@ -35,11 +35,7 @@ import           MultiCut
 -- Data declarations
 --------------------------------------------------------------------------------
 
-data PictureData = PictureData { _fileName :: String
-                               } deriving (Eq,Show)
-makeLenses ''PictureData
-
-data AppState = AppState { _images         :: [PictureData]
+data AppState = AppState { _fileNames      :: [String]
                          , _currentPicture :: Picture
                          , _zoomLevel      :: Float
                          , _vTranslation   :: Float
@@ -62,7 +58,7 @@ main = do
     (InWindow "PictureData Splitter" (1600,900) (0,0))
     (makeColorI 253 246 227 80)
     30
-    (AppState (map PictureData imgPaths) startingImage 1 0 Nothing [])
+    (AppState imgPaths startingImage 1 0 Nothing [])
     drawState
     action
     (\_ s -> return s)
@@ -113,33 +109,33 @@ selectNear y' st = maybe st (\c -> multicuts %~ selectContaining c $ st) (cutNea
 nextImage :: AppState -> IO AppState
 nextImage st = if length imgs < 2 then return st
   else do
-    pic <- fromJust <$> loadJuicy (next ^?! _Just . fileName)
+    pic <- fromJust <$> loadJuicy (next ^?! _Just)
     return $ semiCut        .~ Nothing
            $ currentPicture .~ pic
-           $ images         .~ (tail imgs ++ current ^.. _Just)
+           $ fileNames         .~ (tail imgs ++ current ^.. _Just)
            $ st
-  where imgs = st ^. images
+  where imgs = st ^. fileNames
         current = imgs ^? ix 0
         next    = imgs ^? ix 1
 
 prevImage :: AppState -> IO AppState
 prevImage st = if length imgs < 2 then return st
   else do
-    pic <- fromJust <$> loadJuicy (prev ^?! _Just . fileName)
+    pic <- fromJust <$> loadJuicy (prev ^?! _Just)
     return $ semiCut        .~ Nothing
            $ currentPicture .~ pic
-           $ images         .~ (prev ^.. _Just ++ init imgs)
+           $ fileNames         .~ (prev ^.. _Just ++ init imgs)
            $ st
-  where imgs = st ^. images
+  where imgs = st ^. fileNames
         prev = imgs ^? reversed . ix 0
 
 saveCuts :: AppState -> IO AppState
 saveCuts st = do
-  let picData = st ^?! images . _head
+  let picName = st ^?! fileNames . _head
       mcuts = sort (st ^. multicuts)
-  original <- readImageRGBA8 (picData ^. fileName)
+  original <- readImageRGBA8 picName
   let cutImages  = map (multiTrim original) mcuts
-  sequence_ [ writeFile ((picData ^. fileName) ++ "_cut" ++ show iD ++ ".png") (encodePng cut)
+  sequence_ [ writeFile (picName ++ "_cut" ++ show iD ++ ".png") (encodePng cut)
             | (cut, iD) <- zip cutImages [(1::Int)..]]
   return st
 
