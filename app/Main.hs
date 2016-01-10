@@ -34,12 +34,12 @@ import           MultiCut
 -- Data declarations
 --------------------------------------------------------------------------------
 
-data AppState = AppState { _fileNames      :: [String]
-                         , _currentPicture :: Image PixelRGBA8
-                         , _zoomLevel      :: Float
-                         , _vTranslation   :: Float
-                         , _semiCut        :: Maybe Int
-                         , _multiCuts      :: [MultiCut]
+data AppState = AppState { _fileNames    :: [String]
+                         , _currentImage :: Image PixelRGBA8
+                         , _zoomLevel    :: Float
+                         , _vTranslation :: Float
+                         , _semiCut      :: Maybe Int
+                         , _multiCuts    :: [MultiCut]
                          }
 makeLenses ''AppState
 
@@ -110,7 +110,7 @@ nextImage st = if length imgs < 2 then return st
   else do
     pic <- readImageRGBA8 (next ^?! _Just)
     return $ semiCut        .~ Nothing
-           $ currentPicture .~ pic
+           $ currentImage .~ pic
            $ fileNames         .~ (tail imgs ++ current ^.. _Just)
            $ st
   where imgs = st ^. fileNames
@@ -122,7 +122,7 @@ prevImage st = if length imgs < 2 then return st
   else do
     pic <- readImageRGBA8 (prev ^?! _Just)
     return $ semiCut        .~ Nothing
-           $ currentPicture .~ pic
+           $ currentImage .~ pic
            $ fileNames         .~ (prev ^.. _Just ++ init imgs)
            $ st
   where imgs = st ^. fileNames
@@ -161,7 +161,7 @@ drawState :: AppState -> IO Picture
 drawState st = do
   let pic  = translate 0 (st ^. vTranslation)
              . scale (st ^. zoomLevel) (st ^. zoomLevel)
-             $ (st ^. currentPicture . to fromImageRGBA8)
+             $ (st ^. currentImage . to fromImageRGBA8)
   let cs   = map (drawMultiCut st) (st ^. multiCuts)
   let sCut = maybe Blank (\y -> let y' = y ^. renderCoordY st
                                 in line [(-1000, y'), (1000,y')])
@@ -177,7 +177,7 @@ drawMultiCut st mc = Pictures $ map horizontalRectangle (mc ^. cuts) ++ [vertica
                                    $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')]
     verticalRectangle = let c = minimumOf (cuts . folded . _1) mc ^?! _Just
                             d = maximumOf (cuts . folded . _2) mc ^?! _Just
-                            (Bitmap w _ _ _) = st ^. currentPicture . to fromImageRGBA8
+                            (Bitmap w _ _ _) = st ^. currentImage . to fromImageRGBA8
                             c' = c ^. renderCoordY st
                             d' = d ^. renderCoordY st
                             w' = fromIntegral w
@@ -194,14 +194,14 @@ drawMultiCut st mc = Pictures $ map horizontalRectangle (mc ^. cuts) ++ [vertica
 renderCoordX :: AppState -> Iso' Int Float
 renderCoordX st = iso ((*zL) . subtract semiWidth . fromIntegral)
                       ((/zL) ! (+ semiWidth)      ! round       )
-  where semiWidth = fromIntegral (st ^. currentPicture . to fromImageRGBA8 . to width) / 2
+  where semiWidth = fromIntegral (st ^. currentImage . to fromImageRGBA8 . to width) / 2
         (!) = flip (.)
         zL = st ^. zoomLevel
 
 renderCoordY :: AppState -> Iso' Int Float
 renderCoordY st = iso ((+ vT)        . (*zL) . (+ semiHeight)        . negate . fromIntegral)
                       ((subtract vT) ! (/zL) ! (subtract semiHeight) ! negate ! round       )
-  where semiHeight = fromIntegral (st ^. currentPicture . to fromImageRGBA8 . to height) / 2
+  where semiHeight = fromIntegral (st ^. currentImage . to fromImageRGBA8 . to height) / 2
         (!) = flip (.)
         vT = st ^. vTranslation
         zL = st ^. zoomLevel
