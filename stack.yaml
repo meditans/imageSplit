@@ -1,16 +1,95 @@
-flags: {}
-extra-package-dbs: []
+# For more information, see: https://github.com/commercialhaskell/stack/blob/release/doc/yaml_configuration.md
+
+# Specifies the GHC version and set of packages available (e.g., lts-3.5, nightly-2015-09-21, ghc-7.10.2)
+resolver: ghc-7.10.3
+
+# Local packages, usually specified by relative directory name
 packages:
 - '.'
+
+# Packages to be pulled from upstream that are not in the resolver (e.g., acme-missiles-0.3)
 extra-deps:
-- GLURaw-1.5.0.2
-- GLUT-2.7.0.3
+- GLURaw-1.5.0.3
+- GLUT-2.7.0.5
+- JuicyPixels-3.2.6.4
 - JuicyPixels-util-0.2
-- ObjectName-1.1.0.0
+- MonadCatchIO-transformers-0.3.1.3
+- ObjectName-1.1.0.1
 - OpenGL-2.12.0.1
 - OpenGLRaw-2.5.5.0
+- StateVar-1.1.0.2
+- adjunctions-4.2.2
+- ansi-terminal-0.6.2.3
+- ansi-wl-pprint-0.6.7.3
+- async-2.1.0
+- base-orphans-0.4.5
+- bifunctors-5.1
+- bmp-1.2.5.2
+- clock-0.6.0.1
+- comonad-4.2.7.2
+- contravariant-1.3.3
+- distributive-0.4.4
+- exceptions-0.8.0.2
+- extensible-exceptions-0.1.1.4
+- foldl-1.1.2
+- free-4.12.1
 - gloss-1.9.4.1
 - gloss-juicy-0.2
 - gloss-rendering-1.9.3.1
-- imagemagick-0.0.3.5
-resolver: lts-3.18
+- hashable-1.2.3.3
+- hostname-1.0
+- imagemagick-0.0.3.7
+- kan-extensions-4.2.3
+- lens-4.13
+- lifted-base-0.2.3.6
+- managed-1.0.1
+- mmorph-1.0.4
+- monad-control-1.0.0.4
+- monads-tf-0.1.0.2
+- mtl-2.2.1
+- mwc-random-0.13.3.2
+- optional-args-1.0.0
+- optparse-applicative-0.12.0.0
+- parallel-3.2.1.0
+- prelude-extras-0.4.0.2
+- primitive-0.6.1.0
+- profunctors-5.1.2
+- random-1.1
+- reflection-2.1.1.1
+- resourcet-1.1.7
+- semigroupoids-5.0.0.4
+- semigroups-0.18.0.1
+- stm-2.4.4.1
+- system-fileio-0.3.16.3
+- system-filepath-0.4.13.4
+- tagged-0.8.2
+- temporary-1.2.0.3
+- text-1.2.2.0
+- transformers-base-0.4.4
+- transformers-compat-0.4.0.4
+- turtle-1.2.5
+- unordered-containers-0.2.5.1
+- vector-0.11.0.0
+- void-0.7.1
+- zlib-0.6.1.1
+
+# Override default flag values for local packages and extra-deps
+flags: {}
+
+# Extra package databases containing global packages
+extra-package-dbs: []
+
+# Control whether we use the GHC we find on the path
+# system-ghc: true
+
+# Require a specific version of stack, using version ranges
+# require-stack-version: -any # Default
+# require-stack-version: >= 0.1.4.0
+
+# Override the architecture used by stack, especially useful on Windows
+# arch: i386
+# arch: x86_64
+
+# Extra directories used by stack for building
+# extra-include-dirs: [/path/to/dir]
+# extra-lib-dirs: [/path/to/dir]
