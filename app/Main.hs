@@ -18,12 +18,11 @@ import           Control.Foldl                    (list)
 import           Data.ByteString.Lazy             (writeFile)
 import           Data.Char                        (isDigit)
 import           Data.List                        (foldl1', sort, sortBy)
-import           Data.Maybe                       (fromJust)
 import           Data.Monoid                      ((<>))
 import           Data.Ord                         (comparing)
 import qualified Data.Ord                         as O (Down (..))
 import           Data.Text                        (unpack)
-import           Graphics.Gloss.Juicy             (loadJuicy)
+import           Graphics.Gloss.Juicy             (fromImageRGBA8)
 import           Prelude                          hiding (writeFile)
 import           Text.Read                        (readMaybe)
 import           Turtle                           (ends, fold, format, fp, grep,
@@ -36,12 +35,12 @@ import           MultiCut
 --------------------------------------------------------------------------------
 
 data AppState = AppState { _fileNames      :: [String]
-                         , _currentPicture :: Picture
+                         , _currentPicture :: Image PixelRGBA8
                          , _zoomLevel      :: Float
                          , _vTranslation   :: Float
                          , _semiCut        :: Maybe Int
                          , _multiCuts      :: [MultiCut]
-                         } deriving (Eq,Show)
+                         }
 makeLenses ''AppState
 
 --------------------------------------------------------------------------------
@@ -53,7 +52,7 @@ main = do
   dir <- pwd
   imgPaths <- sortBy (comparing page) . map unpack
           <$> (flip fold list . grep (ends "png") $ format fp <$> ls dir)
-  startingImage <- fmap fromJust $ loadJuicy (head imgPaths)
+  startingImage <- readImageRGBA8 (head imgPaths)
   playIO
     (InWindow "PictureData Splitter" (1600,900) (0,0))
     (makeColorI 253 246 227 80)
@@ -109,7 +108,7 @@ selectNear y' st = maybe st (\c -> multiCuts %~ selectContaining c $ st) (cutNea
 nextImage :: AppState -> IO AppState
 nextImage st = if length imgs < 2 then return st
   else do
-    pic <- fromJust <$> loadJuicy (next ^?! _Just)
+    pic <- readImageRGBA8 (next ^?! _Just)
     return $ semiCut        .~ Nothing
            $ currentPicture .~ pic
            $ fileNames         .~ (tail imgs ++ current ^.. _Just)
@@ -121,7 +120,7 @@ nextImage st = if length imgs < 2 then return st
 prevImage :: AppState -> IO AppState
 prevImage st = if length imgs < 2 then return st
   else do
-    pic <- fromJust <$> loadJuicy (prev ^?! _Just)
+    pic <- readImageRGBA8 (prev ^?! _Just)
     return $ semiCut        .~ Nothing
            $ currentPicture .~ pic
            $ fileNames         .~ (prev ^.. _Just ++ init imgs)
@@ -162,7 +161,7 @@ drawState :: AppState -> IO Picture
 drawState st = do
   let pic  = translate 0 (st ^. vTranslation)
              . scale (st ^. zoomLevel) (st ^. zoomLevel)
-             $ (st ^. currentPicture)
+             $ (st ^. currentPicture . to fromImageRGBA8)
   let cs   = map (drawMultiCut st) (st ^. multiCuts)
   let sCut = maybe Blank (\y -> let y' = y ^. renderCoordY st
                                 in line [(-1000, y'), (1000,y')])
@@ -178,7 +177,7 @@ drawMultiCut st mc = Pictures $ map horizontalRectangle (mc ^. cuts) ++ [vertica
                                    $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')]
     verticalRectangle = let c = minimumOf (cuts . folded . _1) mc ^?! _Just
                             d = maximumOf (cuts . folded . _2) mc ^?! _Just
-                            (Bitmap w _ _ _) = st ^. currentPicture
+                            (Bitmap w _ _ _) = st ^. currentPicture . to fromImageRGBA8
                             c' = c ^. renderCoordY st
                             d' = d ^. renderCoordY st
                             w' = fromIntegral w
@@ -195,14 +194,14 @@ drawMultiCut st mc = Pictures $ map horizontalRectangle (mc ^. cuts) ++ [vertica
 renderCoordX :: AppState -> Iso' Int Float
 renderCoordX st = iso ((*zL) . subtract semiWidth . fromIntegral)
                       ((/zL) ! (+ semiWidth)      ! round       )
-  where semiWidth = fromIntegral (st ^. currentPicture . to width) / 2
+  where semiWidth = fromIntegral (st ^. currentPicture . to fromImageRGBA8 . to width) / 2
         (!) = flip (.)
         zL = st ^. zoomLevel
 
 renderCoordY :: AppState -> Iso' Int Float
 renderCoordY st = iso ((+ vT)        . (*zL) . (+ semiHeight)        . negate . fromIntegral)
                       ((subtract vT) ! (/zL) ! (subtract semiHeight) ! negate ! round       )
-  where semiHeight = fromIntegral (st ^. currentPicture . to height) / 2
+  where semiHeight = fromIntegral (st ^. currentPicture . to fromImageRGBA8 . to height) / 2
         (!) = flip (.)
         vT = st ^. vTranslation
         zL = st ^. zoomLevel
