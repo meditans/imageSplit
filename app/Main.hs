@@ -101,7 +101,8 @@ maybeAddCut y st = maybe
   where y' = y ^. from (renderCoordY st)
 
 deleteNear :: Float -> AppState -> AppState
-deleteNear y' st = (multiCuts %~ filter (not . null . view cuts) . map (maybe id deleteCut near)) st
+deleteNear y' st = (multiCuts %~ filter (not . null . view cuts)
+                               . map (maybe id deleteCut near)) st
   where near = cutNear y' st
 
 selectNear :: Float -> AppState -> AppState
@@ -136,7 +137,7 @@ saveCuts :: AppState -> IO AppState
 saveCuts st = do
   let picName = st ^?! fileNames . _head
       mcuts = sort (st ^. multiCuts)
-  original <- readImageRGBA8 picName
+  let original = st ^. currentImage
   let cutImages  = map (multiTrim original) mcuts
   sequence_ [ writeFile (picName ++ "_cut" ++ show iD ++ ".png") (encodePng cut)
             | (cut, iD) <- zip cutImages [(1::Int)..]]
