@@ -40,7 +40,7 @@ data AppState = AppState { _fileNames      :: [String]
                          , _zoomLevel      :: Float
                          , _vTranslation   :: Float
                          , _semiCut        :: Maybe Int
-                         , _multicuts      :: [MultiCut]
+                         , _multiCuts      :: [MultiCut]
                          } deriving (Eq,Show)
 makeLenses ''AppState
 
@@ -78,7 +78,7 @@ action (Button (SpecialKey  KeyRight))  = nextImage
 action (Button (SpecialKey  KeyLeft))   = prevImage
 action (Button (SpecialKey  KeyEnter))  = saveCuts
 action (Button (SpecialKey  KeyDelete)) = deleteCuts
-action (Button (Char 'm'))              = return . (multicuts %~ mergeSelected)
+action (Button (Char 'm'))              = return . (multiCuts %~ mergeSelected)
 action (Button (Char '+'))              = return . (zoomLevel *~  1.1)
 action (Button (Char '-'))              = return . (zoomLevel //~ 1.1)
 action (Button (Char '='))              = return . (zoomLevel .~ 1)
@@ -94,17 +94,17 @@ maybeAddCut :: Float -> AppState -> AppState
 maybeAddCut y st = maybe
   (set semiCut (Just y') st)
   (\x -> set semiCut Nothing
-         . over multicuts (MultiCut [(min x y', max x y')] False :)
+         . over multiCuts (MultiCut [(min x y', max x y')] False :)
          $ st)
   (st ^. semiCut)
   where y' = y ^. from (renderCoordY st)
 
 deleteNear :: Float -> AppState -> AppState
-deleteNear y' st = (multicuts %~ filter (not . null . view cuts) . map (maybe id deleteCut near)) st
+deleteNear y' st = (multiCuts %~ filter (not . null . view cuts) . map (maybe id deleteCut near)) st
   where near = cutNear y' st
 
 selectNear :: Float -> AppState -> AppState
-selectNear y' st = maybe st (\c -> multicuts %~ selectContaining c $ st) (cutNear y' st)
+selectNear y' st = maybe st (\c -> multiCuts %~ selectContaining c $ st) (cutNear y' st)
 
 nextImage :: AppState -> IO AppState
 nextImage st = if length imgs < 2 then return st
@@ -132,7 +132,7 @@ prevImage st = if length imgs < 2 then return st
 saveCuts :: AppState -> IO AppState
 saveCuts st = do
   let picName = st ^?! fileNames . _head
-      mcuts = sort (st ^. multicuts)
+      mcuts = sort (st ^. multiCuts)
   original <- readImageRGBA8 picName
   let cutImages  = map (multiTrim original) mcuts
   sequence_ [ writeFile (picName ++ "_cut" ++ show iD ++ ".png") (encodePng cut)
@@ -140,14 +140,14 @@ saveCuts st = do
   return st
 
 deleteCuts :: AppState -> IO AppState
-deleteCuts = return . (set semiCut Nothing) . (multicuts .~ [])
+deleteCuts = return . (set semiCut Nothing) . (multiCuts .~ [])
 
 --------------------------------------------------------------------------------
 -- Localize the nearest cut
 --------------------------------------------------------------------------------
 
 cutNear :: Float -> AppState -> Maybe Cut
-cutNear y' st = minimumByOf (multicuts . folded . cuts . folded) comparison st
+cutNear y' st = minimumByOf (multiCuts . folded . cuts . folded) comparison st
   where
     comparison c1 c2 = comparing (\(a,b) -> O.Down (btwn a b y))   c1 c2
                     <> comparing (\(a,b) -> abs (a-y) + abs (b-y)) c1 c2
@@ -163,7 +163,7 @@ drawState st = do
   let pic  = translate 0 (st ^. vTranslation)
              . scale (st ^. zoomLevel) (st ^. zoomLevel)
              $ (st ^. currentPicture)
-  let cs   = map (drawMultiCut st) (st ^. multicuts)
+  let cs   = map (drawMultiCut st) (st ^. multiCuts)
   let sCut = maybe Blank (\y -> let y' = y ^. renderCoordY st
                                 in line [(-1000, y'), (1000,y')])
                          (st ^. semiCut)
