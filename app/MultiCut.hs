@@ -39,5 +39,7 @@ selectContaining :: Cut -> [MultiCut] -> [MultiCut]
 selectContaining c = traversed . filtered (containsCut c) . selected .~ True
 
 mergeSelected :: [MultiCut] -> [MultiCut]
-mergeSelected []  = []
-mergeSelected mcs = foldl1' mergeMultiCuts (filter _selected mcs) : filter (not . _selected) mcs
+mergeSelected mcs
+  | null $ filter _selected mcs = mcs
+  | otherwise = foldl1' mergeMultiCuts (filter _selected mcs) : filter (not . _selected) mcs
+

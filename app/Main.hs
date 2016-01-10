@@ -34,12 +34,13 @@ import           MultiCut
 -- Data declarations
 --------------------------------------------------------------------------------
 
-data AppState = AppState { _fileNames    :: [String]
-                         , _currentImage :: Image PixelRGBA8
-                         , _zoomLevel    :: Float
-                         , _vTranslation :: Float
-                         , _semiCut      :: Maybe Int
-                         , _multiCuts    :: [MultiCut]
+data AppState = AppState { _fileNames      :: [String]
+                         , _currentImage   :: Image PixelRGBA8
+                         , _currentPicture :: Picture
+                         , _zoomLevel      :: Float
+                         , _vTranslation   :: Float
+                         , _semiCut        :: Maybe Int
+                         , _multiCuts      :: [MultiCut]
                          }
 makeLenses ''AppState
 
@@ -57,7 +58,7 @@ main = do
     (InWindow "PictureData Splitter" (1600,900) (0,0))
     (makeColorI 253 246 227 80)
     30
-    (AppState imgPaths startingImage 1 0 Nothing [])
+    (AppState imgPaths startingImage (fromImageRGBA8 startingImage) 1 0 Nothing [])
     drawState
     action
     (\_ s -> return s)
@@ -77,6 +78,7 @@ action (Button (SpecialKey  KeyRight))  = nextImage
 action (Button (SpecialKey  KeyLeft))   = prevImage
 action (Button (SpecialKey  KeyEnter))  = saveCuts
 action (Button (SpecialKey  KeyDelete)) = deleteCuts
+action (Button (Char 'd'))              = dualPage
 action (Button (Char 'm'))              = return . (multiCuts %~ mergeSelected)
 action (Button (Char '+'))              = return . (zoomLevel *~  1.1)
 action (Button (Char '-'))              = return . (zoomLevel //~ 1.1)
@@ -108,25 +110,27 @@ selectNear y' st = maybe st (\c -> multiCuts %~ selectContaining c $ st) (cutNea
 nextImage :: AppState -> IO AppState
 nextImage st = if length imgs < 2 then return st
   else do
-    pic <- readImageRGBA8 (next ^?! _Just)
+    pic <- readImageRGBA8 next
     return $ semiCut        .~ Nothing
-           $ currentImage .~ pic
-           $ fileNames         .~ (tail imgs ++ current ^.. _Just)
+           $ currentPicture .~ fromImageRGBA8 pic
+           $ currentImage   .~ pic
+           $ fileNames      .~ (tail imgs ++ [current])
            $ st
   where imgs = st ^. fileNames
-        current = imgs ^? ix 0
-        next    = imgs ^? ix 1
+        current = imgs ^. ix 0
+        next    = imgs ^. ix 1
 
 prevImage :: AppState -> IO AppState
 prevImage st = if length imgs < 2 then return st
   else do
-    pic <- readImageRGBA8 (prev ^?! _Just)
+    pic <- readImageRGBA8 prev
     return $ semiCut        .~ Nothing
-           $ currentImage .~ pic
-           $ fileNames         .~ (prev ^.. _Just ++ init imgs)
+           $ currentPicture .~ fromImageRGBA8 pic
+           $ currentImage   .~ pic
+           $ fileNames      .~ (prev : init imgs)
            $ st
   where imgs = st ^. fileNames
-        prev = imgs ^? reversed . ix 0
+        prev = imgs ^. reversed . ix 0
 
 saveCuts :: AppState -> IO AppState
 saveCuts st = do
@@ -140,6 +144,15 @@ saveCuts st = do
 
 deleteCuts :: AppState -> IO AppState
 deleteCuts = return . (set semiCut Nothing) . (multiCuts .~ [])
+
+dualPage :: AppState -> IO AppState
+dualPage st
+  | length (st ^. fileNames) < 2 = return st
+  | otherwise = deleteCuts st >>= (\nst -> do
+      im1 <- readImageRGBA8 (nst ^. fileNames . ix 0)
+      im2 <- readImageRGBA8 (nst ^. fileNames . ix 1)
+      let im = mergePages im1 im2
+      return . (currentPicture .~ fromImageRGBA8 im) . (currentImage .~ im) $ nst)
 
 --------------------------------------------------------------------------------
 -- Localize the nearest cut
@@ -161,7 +174,7 @@ drawState :: AppState -> IO Picture
 drawState st = do
   let pic  = translate 0 (st ^. vTranslation)
              . scale (st ^. zoomLevel) (st ^. zoomLevel)
-             $ (st ^. currentImage . to fromImageRGBA8)
+             $ (st ^. currentPicture)
   let cs   = map (drawMultiCut st) (st ^. multiCuts)
   let sCut = maybe Blank (\y -> let y' = y ^. renderCoordY st
                                 in line [(-1000, y'), (1000,y')])
