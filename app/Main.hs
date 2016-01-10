@@ -10,13 +10,14 @@ import           Control.Lens
 import           Graphics.Gloss.Interface.IO.Game hiding (text)
 
 import           Codec.Picture.Png                (encodePng, writePng)
-import           Codec.Picture.RGBA8              (readImageRGBA8, trimImage, patchImage)
-import           Codec.Picture.Types              (Image (..), PixelRGBA8 (..), generateImage)
+import           Codec.Picture.RGBA8              (patchImage, readImageRGBA8,
+                                                   trimImage)
+import           Codec.Picture.Types              (Image (..), PixelRGBA8 (..),
+                                                   generateImage)
 import           Control.Foldl                    (list)
 import           Data.ByteString.Lazy             (writeFile)
 import           Data.Char                        (isDigit)
-import           Data.List                        (delete, minimumBy, sort,
-                                                   sortBy)
+import           Data.List                        (foldl1', sort, sortBy)
 import           Data.Maybe                       (fromJust)
 import           Data.Monoid                      ((<>))
 import           Data.Ord                         (comparing)
@@ -28,12 +29,14 @@ import           Text.Read                        (readMaybe)
 import           Turtle                           (ends, fold, format, fp, grep,
                                                    ls, pwd)
 
+import           MultiCut
+
 --------------------------------------------------------------------------------
 -- Data declarations
 --------------------------------------------------------------------------------
 
 data PictureData = PictureData { _fileName  :: String
-                               , _cutCoords :: [(Int,Int)]
+                               , _multicuts :: [MultiCut]
                                } deriving (Eq,Show)
 makeLenses ''PictureData
 
@@ -67,16 +70,19 @@ main = do
 page :: String -> Maybe Int
 page = readMaybe . takeWhile (isDigit) . reverse . takeWhile (/= '/') . reverse
 
-pattern Button b   <- EventKey b               Down _ _
-pattern Click  b y <- EventKey (MouseButton b) Down (Modifiers Up Up Up) (_,y)
+pattern Button      b   <- EventKey b               Down _ _
+pattern Click       b y <- EventKey (MouseButton b) Down (Modifiers Up   Up Up) (_,y)
+pattern ShiftClick  b y <- EventKey (MouseButton b) Down (Modifiers Down Up Up) (_,y)
 
 action :: Event -> AppState -> IO AppState
-action (Click LeftButton  y) = return . maybeAddCut y
-action (Click RightButton y) = return . deleteNear y
+action (Click LeftButton  y)            = return . maybeAddCut y
+action (Click RightButton y)            = return . deleteNear y
+action (ShiftClick LeftButton y)        = return . selectNear y
 action (Button (SpecialKey  KeyRight))  = nextImage
 action (Button (SpecialKey  KeyLeft))   = prevImage
 action (Button (SpecialKey  KeyEnter))  = saveCuts
 action (Button (SpecialKey  KeyDelete)) = deleteCuts
+action (Button (Char 'm'))              = return . (images . ix 0 . multicuts %~ mergeSelected)
 action (Button (Char '+'))              = return . (zoomLevel *~  1.1)
 action (Button (Char '-'))              = return . (zoomLevel //~ 1.1)
 action (Button (Char '='))              = return . (zoomLevel .~ 1)
@@ -87,6 +93,22 @@ action _ = return
 --------------------------------------------------------------------------------
 -- Functions on state
 --------------------------------------------------------------------------------
+
+maybeAddCut :: Float -> AppState -> AppState
+maybeAddCut y st = maybe
+  (set semiCut (Just y') st)
+  (\x -> set semiCut Nothing
+         . over (images . _head . multicuts) (MultiCut [(min x y', max x y')] False :)
+         $ st)
+  (st ^. semiCut)
+  where y' = y ^. from (renderCoordY st)
+
+deleteNear :: Float -> AppState -> AppState
+deleteNear y' st = (images . ix 0 . multicuts %~ filter (not . null . view cuts) . map (maybe id deleteCut near)) st
+  where near = cutNear y' st
+
+selectNear :: Float -> AppState -> AppState
+selectNear y' st = maybe st (\c -> images . ix 0 . multicuts %~ selectContaining c $ st) (cutNear y' st)
 
 nextImage :: AppState -> IO AppState
 nextImage st = if length imgs < 2 then return st
@@ -114,50 +136,58 @@ prevImage st = if length imgs < 2 then return st
 saveCuts :: AppState -> IO AppState
 saveCuts st = do
   let picData = st ^?! images . _head
-      cuts = sort (picData ^. cutCoords)
-      w = st ^. currentPicture . to width
+      mcuts = sort (picData ^. multicuts)
   original <- readImageRGBA8 (picData ^. fileName)
-  let trim (a,b) = trimImage original (w,b-a) (0,a)
-      cutImages  = map trim cuts
+  let cutImages  = map (multiTrim original) mcuts
   sequence_ [ writeFile ((picData ^. fileName) ++ "_cut" ++ show iD ++ ".png") (encodePng cut)
             | (cut, iD) <- zip cutImages [(1::Int)..]]
   return st
 
 deleteCuts :: AppState -> IO AppState
-deleteCuts = return . (set semiCut Nothing) . (set (images . _head . cutCoords) [])
+deleteCuts = return . (set semiCut Nothing) . (images . _head . multicuts .~ [])
 
-maybeAddCut :: Float -> AppState -> AppState
-maybeAddCut y st = maybe
-  (set semiCut (Just y') st)
-  (\x -> set semiCut Nothing
-         . over (images . _head . cutCoords) ((min x y', max x y'):)
-         $ st)
-  (st ^. semiCut)
-  where y' = y ^. from (renderCoordY st)
+--------------------------------------------------------------------------------
+-- Localize the nearest cut
+--------------------------------------------------------------------------------
 
-deleteNear :: Float -> AppState -> AppState
-deleteNear f st = over (images . ix 0 . cutCoords) (pureDeletion f') st
-  where pureDeletion x xs = flip delete xs
-          . minimumBy (\h k -> comparing (\(a,b) -> O.Down (btwn a b x)) h k
-                            <> comparing (\(a,b) -> abs (a-x) + abs (b-x)) h k
-                      ) $ xs
-        f' = f ^. from (renderCoordY st)
-        btwn a b x = a <= x && x <= b
+cutNear :: Float -> AppState -> Maybe Cut
+cutNear y' st = minimumByOf (images . ix 0 . multicuts . folded . cuts . folded) comparison st
+  where
+    comparison c1 c2 = comparing (\(a,b) -> O.Down (btwn a b y))   c1 c2
+                    <> comparing (\(a,b) -> abs (a-y) + abs (b-y)) c1 c2
+    y = y' ^. from (renderCoordY st)
+    btwn a b x = a <= x && x <= b
+
+--------------------------------------------------------------------------------
+-- Drawing functions
+--------------------------------------------------------------------------------
 
 drawState :: AppState -> IO Picture
 drawState st = do
   let pic  = translate 0 (st ^. vTranslation)
              . scale (st ^. zoomLevel) (st ^. zoomLevel)
              $ (st ^. currentPicture)
-  let cuts = map (\(a,b) -> let a' = a ^. renderCoordY st
-                                b' = b ^. renderCoordY st
-                            in color (makeColorI 238 232 213 110)
-                               $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')])
-                 (st ^. images . ix 0 . cutCoords)
+  let cs   = map (drawMultiCut st) (st ^. images . ix 0 . multicuts)
   let sCut = maybe Blank (\y -> let y' = y ^. renderCoordY st
                                 in line [(-1000, y'), (1000,y')])
                          (st ^. semiCut)
-  return $ Pictures $ [pic] ++ cuts ++ [sCut]
+  return $ Pictures $ [pic] ++ cs ++ [sCut]
+
+drawMultiCut :: AppState -> MultiCut -> Picture
+drawMultiCut st mc = Pictures $ map horizontalRectangle (mc ^. cuts) ++ [verticalRectangle]
+  where
+    horizontalRectangle (a,b) = let a' = a ^. renderCoordY st
+                                    b' = b ^. renderCoordY st
+                                in color (makeColorI 238 232 213 110)
+                                   $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')]
+    verticalRectangle = let c = minimumOf (cuts . folded . _1) mc ^?! _Just
+                            d = maximumOf (cuts . folded . _2) mc ^?! _Just
+                            (Bitmap w _ _ _) = st ^. currentPicture
+                            c' = c ^. renderCoordY st
+                            d' = d ^. renderCoordY st
+                            w' = fromIntegral w
+                        in color (if (mc^.selected) then makeColorI 255 0 0 255 else makeColorI 50 50 50 255)
+                           $ polygon [(w'-250, c'), (w'-225, c'), (w'-225, d'), (w'-250, d')]
 
 --------------------------------------------------------------------------------
 -- Coordinate isomorphisms
@@ -208,3 +238,6 @@ testMergePages = do
  p2 <- readImageRGBA8 "page2.png"
  let p3 = mergePages p1 p2
  writePng "page3.png" p3
+
+multiTrim :: Image PixelRGBA8 -> MultiCut -> Image PixelRGBA8
+multiTrim im@(Image w _ _) = foldl1' mergePages . map (\(a,b) -> trimImage im (w,b-a) (0,a)) . sort . view cuts
