@@ -51,7 +51,7 @@ makeLenses ''AppState
 main :: IO ()
 main = do
   dir <- pwd
-  imgPaths <- sortBy (comparing page) . map unpack
+  imgPaths <- sortBy (comparing page) . sort . map unpack
           <$> (flip fold list . grep (ends "png") $ format fp <$> ls dir)
   startingImage <- readImageRGBA8 (head imgPaths)
   playIO
