@@ -113,6 +113,7 @@ nextImage st = if length imgs < 2 then return st
   else do
     pic <- readImageRGBA8 next
     return $ semiCut        .~ Nothing
+           $ multiCuts      .~ []
            $ currentPicture .~ fromImageRGBA8 pic
            $ currentImage   .~ pic
            $ fileNames      .~ (tail imgs ++ [current])
@@ -126,6 +127,7 @@ prevImage st = if length imgs < 2 then return st
   else do
     pic <- readImageRGBA8 prev
     return $ semiCut        .~ Nothing
+           $ multiCuts      .~ []
            $ currentPicture .~ fromImageRGBA8 pic
            $ currentImage   .~ pic
            $ fileNames      .~ (prev : init imgs)
