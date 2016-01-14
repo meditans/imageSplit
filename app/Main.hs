@@ -34,13 +34,14 @@ import           MultiCut
 -- Data declarations
 --------------------------------------------------------------------------------
 
-data AppState = AppState { _fileNames      :: [String]
-                         , _currentImage   :: Image PixelRGBA8
-                         , _currentPicture :: Picture
-                         , _zoomLevel      :: Float
-                         , _vTranslation   :: Float
-                         , _semiCut        :: Maybe Int
-                         , _multiCuts      :: [MultiCut]
+data AppState = AppState { _fileNames        :: [String]
+                         , _currentImage     :: Image PixelRGBA8
+                         , _currentPicture   :: Picture
+                         , _zoomLevel        :: Float
+                         , _vTranslation     :: Float
+                         , _semiCut          :: Maybe Int
+                         , _multiCuts        :: [MultiCut]
+                         , _windowDimensions :: (Int,Int)
                          }
 makeLenses ''AppState
 
@@ -54,11 +55,12 @@ main = do
   imgPaths <- sortBy (comparing page) . sort . map unpack
           <$> (flip fold list . grep (ends "png") $ format fp <$> ls dir)
   startingImage <- readImageRGBA8 (head imgPaths)
+  let dimensions = (1600,900)
   playIO
-    (InWindow "PictureData Splitter" (1600,900) (0,0))
+    (InWindow "PictureData Splitter" dimensions (0,0))
     (makeColorI 253 246 227 80)
     30
-    (AppState imgPaths startingImage (fromImageRGBA8 startingImage) 1 0 Nothing [])
+    (AppState imgPaths startingImage (fromImageRGBA8 startingImage) 1 0 Nothing [] dimensions)
     drawState
     action
     (\_ s -> return s)
@@ -85,6 +87,7 @@ action (Button (Char '-'))              = return . (zoomLevel //~ 1.1)
 action (Button (Char '='))              = return . (zoomLevel .~ 1)
 action (Button (SpecialKey KeyUp))      = return . (vTranslation -~ 100)
 action (Button (SpecialKey KeyDown))    = return . (vTranslation +~ 100)
+action (EventResize dims)               = return . (windowDimensions .~ dims)
 action _ = return
 
 --------------------------------------------------------------------------------
@@ -193,12 +196,12 @@ drawMultiCut st mc = Pictures $ map horizontalRectangle (mc ^. cuts) ++ [vertica
                                    $ polygon [(-1000, a'), (1000, a'), (1000, b'), (-1000, b')]
     verticalRectangle = let c = minimumOf (cuts . folded . _1) mc ^?! _Just
                             d = maximumOf (cuts . folded . _2) mc ^?! _Just
-                            (Bitmap w _ _ _) = st ^. currentImage . to fromImageRGBA8
+                            -- (Bitmap w _ _ _) = st ^. currentImage . to fromImageRGBA8
                             c' = c ^. renderCoordY st
                             d' = d ^. renderCoordY st
-                            w' = fromIntegral w
+                            w  = st ^. windowDimensions . _1 . to fromIntegral . to (/2)
                         in color (if (mc^.selected) then makeColorI 255 0 0 255 else makeColorI 50 50 50 255)
-                           $ polygon [(w'-250, c'), (w'-225, c'), (w'-225, d'), (w'-250, d')]
+                           $ polygon [(w-250, c'), (w-225, c'), (w-225, d'), (w-250, d')]
 
 --------------------------------------------------------------------------------
 -- Coordinate isomorphisms
