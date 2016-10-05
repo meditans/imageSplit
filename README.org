@@ -1,0 +1,36 @@
+* Image split
+My brother needed a simple tool to cut horizontal stripes from scanned textbooks
+(for example, theorems or particular concepts) in order to be able to create a
+deck for spaced repetition software (e.g. anki), simplifying the recall of
+mathematical results over time.
+
+Be sure to have =ImageMagick= and =glut= installed. The program takes as
+argument the name of a directory containing =.png= files of the form
+=NumberOtherstuff.png=, like =000dynamicalSystems.png=, and reads them in
+sequential order.
+
+As an example you can try the invocation =stack exec imageSplit-exe -- ./= which
+invokes the program on this directory, which containes a pre-converted two-pages
+document. Here's an example of what you can do (the highlighted areas will
+become standalone =.png= files when you cut them):
+
+#+CAPTION: Interface example
+[[./images/example.png]]
+
+You can use the left mouse button to set new cuts, right mouse button to delete
+the nearest cut, =+= and =-= to zoom, up and down arrow to move. When you're
+done with a page, press =Enter= to save the cuts as standalone =.png= images,
+and go to the next/previous page with the right/left arrow.
+
+The results for the cut in the previous image are the two images:
+
+#+CAPTION: First cut
+[[./images/1typesScottNumerals.png_cut1.png]]
+
+and
+
+#+CAPTION: Second cut
+[[./images/1typesScottNumerals.png_cut2.png]]
+
+This tools is developed for personal use, so it's rough at the egdes, but if you
+find it useful and want to get more documentation or fixes, get in touch!
