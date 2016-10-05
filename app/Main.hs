@@ -7,6 +7,7 @@
 module Main where
 
 import           Control.Lens
+import           Control.Monad                    (when)
 import           Graphics.Gloss.Interface.IO.Game hiding (text)
 
 import           Codec.Picture.Png                (encodePng, writePng)
@@ -27,6 +28,7 @@ import           Prelude                          hiding (writeFile)
 import           Text.Read                        (readMaybe)
 import           Turtle                           (ends, fold, format, fp, grep,
                                                    ls, pwd)
+import           System.Exit                      (exitFailure)
 
 import           MultiCut
 
@@ -54,6 +56,9 @@ main = do
   dir <- pwd
   imgPaths <- sortBy (comparing page) . sort . map unpack
           <$> (flip fold list . grep (ends "png") $ format fp <$> ls dir)
+  when (null imgPaths) $ do
+    putStrLn $ "The selected folder does not contain .png files in the expected format."
+    exitFailure
   startingImage <- readImageRGBA8 (head imgPaths)
   let dimensions = (1600,900)
   playIO
