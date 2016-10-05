@@ -4,15 +4,15 @@ My brother needed a simple tool to cut horizontal stripes from scanned textbooks
 deck for spaced repetition software (e.g. anki), simplifying the recall of
 mathematical results over time.
 
-Be sure to have =ImageMagick= and =glut= installed. The program takes as
-argument the name of a directory containing =.png= files of the form
-=NumberOtherstuff.png=, like =000dynamicalSystems.png=, and reads them in
-sequential order.
+Be sure to have =ImageMagick= and =glut= installed. The program doensn't take
+any arguments, searches in the directory in which it's invoked =.png= files of
+the form =NumberOtherstuff.png=, like =000dynamicalSystems.png= and reads them
+in sequential order.
 
-As an example you can try the invocation =stack exec imageSplit-exe -- ./= which
-invokes the program on this directory, which containes a pre-converted two-pages
-document. Here's an example of what you can do (the highlighted areas will
-become standalone =.png= files when you cut them):
+As an example you can try the invocation =stack exec imageSplit-exe= in the
+folder of the project, which containes a pre-converted two-pages document.
+Here's an example of what you can do (the highlighted areas will become
+standalone =.png= files when you cut them):
 
 #+CAPTION: Interface example
 [[./images/example.png]]
